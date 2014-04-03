@@ -23,6 +23,7 @@
 #
 
 require 'net/http'
+require 'uri'
 
 require_relative 'splunk_http_error'
 require_relative 'version'
@@ -76,10 +77,16 @@ module Splunk
       @port = Integer(args.fetch(:port, DEFAULT_PORT))
       @username = args.fetch(:username, nil)
       @password = args.fetch(:password, nil)
+      
       # Have to use Splunk::namespace() or we will call the
       # local accessor.
       @namespace = args.fetch(:namespace,
                               Splunk::namespace(:sharing => "default"))
+
+      # Use http_proxy as source for proxy params
+      uri = URI.parse(ENV.fetch('http_proxy', ""))
+      @proxy_host = uri.host
+      @proxy_port = uri.port
     end
 
     ##
@@ -150,6 +157,12 @@ module Splunk
     attr_reader :namespace
 
     ##
+    # Values used for proxy params to perform requests 
+    #
+    attr_reader :proxy_host
+    attr_reader :proxy_port
+
+    ##
     # Opens a TCP socket to the Splunk HTTP server.
     #
     # If the +scheme+ field of this +Context+ is +:https+, this method returns
@@ -159,6 +172,8 @@ module Splunk
     #
     # Returns: an +SSLSocket+ or +TCPSocket+.
     #
+    
+
     def connect()
       socket = TCPSocket.new(@host, @port)
       if scheme == :https
@@ -400,12 +415,12 @@ module Splunk
       url_hostname = url.host
       if url.respond_to?(:hostname)
         url_hostname = url.hostname
-      end
-      response = Net::HTTP::start(
-          url_hostname, url.port,
-          :use_ssl => url.scheme == 'https',
-          # We don't support certificates.
-          :verify_mode => OpenSSL::SSL::VERIFY_NONE
+      end 
+
+      response = Net::HTTP::start(url_hostname, url.port, @proxy_host, @proxy_port,
+         :use_ssl => url.scheme == 'https',
+         # We don't support certificates.
+         :verify_mode => OpenSSL::SSL::VERIFY_NONE
       ) do |http|
         http.request(request)
       end
